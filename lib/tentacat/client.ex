@@ -1,8 +1,8 @@
 defmodule Tentacat.Client do
-  defstruct auth: nil, endpoint: "https://api.github.com/"
+  defstruct auth: nil, endpoint: "https://api.github.com/", request_options: []
 
   @type auth :: %{user: binary, password: binary} | %{access_token: binary} | %{jwt: binary}
-  @type t :: %__MODULE__{auth: auth | nil, endpoint: binary}
+  @type t :: %__MODULE__{auth: auth | nil, endpoint: binary, request_options: Keyword.t()}
 
   @spec new() :: t
   def new(), do: %__MODULE__{}

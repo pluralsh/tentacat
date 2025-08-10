@@ -40,10 +40,10 @@ defmodule Tentacat.RepositoriesTest do
 
   test "list_users/2 with manual pagination" do
     use_cassette "repositories#list_user_manual_pagination", match_requests_on: [:query] do
-      {{_, body, _}, next_link, auth} = list_users(@client, "octocat", [], pagination: :manual)
+      {{_, body, _}, next_link, client} = list_users(@client, "octocat", [], pagination: :manual)
       assert Enum.count(body) == 5
       assert next_link == nil
-      assert auth == @client.auth
+      assert client == @client
     end
   end
 

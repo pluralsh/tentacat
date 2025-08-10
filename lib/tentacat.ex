@@ -34,22 +34,22 @@ defmodule Tentacat do
 
   @spec delete(binary, Client.t(), any) :: response
   def delete(path, client, body \\ "") do
-    _request(:delete, url(client, path), client.auth, body)
+    _request(:delete, url(client, path), client, body)
   end
 
   @spec post(binary, Client.t(), any) :: response
   def post(path, client, body \\ "") do
-    _request(:post, url(client, path), client.auth, body)
+    _request(:post, url(client, path), client, body)
   end
 
   @spec patch(binary, Client.t(), any) :: response
   def patch(path, client, body \\ "") do
-    _request(:patch, url(client, path), client.auth, body)
+    _request(:patch, url(client, path), client, body)
   end
 
   @spec put(binary, Client.t(), any) :: response
   def put(path, client, body \\ "") do
-    _request(:put, url(client, path), client.auth, body)
+    _request(:put, url(client, path), client, body)
   end
 
   @doc """
@@ -86,17 +86,17 @@ defmodule Tentacat do
       |> add_params_to_url(params)
 
     case pagination(options) do
-      nil -> request_stream(:get, url, client.auth)
-      :none -> request_stream(:get, url, client.auth, "", :one_page)
-      :auto -> request_stream(:get, url, client.auth)
-      :stream -> request_stream(:get, url, client.auth, "", :stream)
-      :manual -> request_with_pagination(:get, url, client.auth)
+      nil -> request_stream(:get, url, client)
+      :none -> request_stream(:get, url, client, "", :one_page)
+      :auto -> request_stream(:get, url, client)
+      :stream -> request_stream(:get, url, client, "", :stream)
+      :manual -> request_with_pagination(:get, url, client)
     end
   end
 
-  @spec _request(atom, binary, Client.auth(), any) :: response
-  def _request(method, url, auth, body \\ "") do
-    json_request(method, url, body, authorization_header(auth, @user_agent))
+  @spec _request(atom, binary, Client.t(), any) :: response
+  def _request(method, url, %Client{auth: auth, request_options: opts}, body \\ "") do
+    json_request(method, url, body, authorization_header(auth, @user_agent), opts || [])
   end
 
   @spec json_request(atom, binary, any, keyword, keyword) :: response
@@ -123,19 +123,19 @@ defmodule Tentacat do
 
   def raw_request(method, url, body \\ "", headers \\ [], options \\ []) do
     method
-    |> request!(url, body, extra_headers() ++ headers, extra_options() ++ options)
+    |> request!(url, body, extra_headers() ++ headers, options ++ extra_options())
     |> process_response
   end
 
-  @spec request_stream(atom, binary, Client.auth(), any, :one_page | nil | :stream) ::
+  @spec request_stream(atom, binary, Client.t(), any, :one_page | nil | :stream) ::
           Enumerable.t() | response
-  def request_stream(method, url, auth, body \\ "", override \\ nil) do
-    request_with_pagination(method, url, auth, Jason.encode!(body))
+  def request_stream(method, url, %Client{} = client, body \\ "", override \\ nil) do
+    request_with_pagination(method, url, client, Jason.encode!(body))
     |> stream_if_needed(override)
   end
 
   @spec stream_if_needed(pagination_response, :one_page | nil) :: response
-  @spec stream_if_needed({response, binary | nil, Client.auth()}, :stream) :: Enumerable.t()
+  @spec stream_if_needed({response, binary | nil, Client.t()}, :stream) :: Enumerable.t()
   defp stream_if_needed({response, _, _}, :one_page), do: response
   defp stream_if_needed({response, nil, _}, _), do: response
 
@@ -151,49 +151,49 @@ defmodule Tentacat do
 
   defp process_stream({[], nil, _}), do: {:halt, nil}
 
-  defp process_stream({[], next, auth}) do
-    request_with_pagination(:get, next, auth, "")
+  defp process_stream({[], next, client}) do
+    request_with_pagination(:get, next, client, "")
     |> process_stream
   end
 
-  defp process_stream({{_, items, _}, next, auth}) when is_list(items) do
-    {items, {[], next, auth}}
+  defp process_stream({{_, items, _}, next, client}) when is_list(items) do
+    {items, {[], next, client}}
   end
 
-  defp process_stream({item, next, auth}) do
-    {[item], {[], next, auth}}
+  defp process_stream({item, next, client}) do
+    {[item], {[], next, client}}
   end
 
-  @spec request_with_pagination(atom, binary, Client.auth(), any) :: pagination_response
-  def request_with_pagination(method, url, auth, body \\ "") do
+  @spec request_with_pagination(atom, binary, Client.t(), any) :: pagination_response
+  def request_with_pagination(method, url, %Client{auth: auth, request_options: opts} = client, body \\ "") do
     resp =
       request!(
         method,
         url,
         Jason.encode!(body),
         authorization_header(auth, extra_headers() ++ @user_agent),
-        extra_options()
+        (opts || []) ++ extra_options()
       )
 
     case process_response(resp) do
       {status, _, _} when status in [301, 302, 307] ->
-        request_with_pagination(method, location_header(resp), auth)
+        request_with_pagination(method, location_header(resp), client)
 
       _ ->
-        build_pagination_response(resp, auth)
+        build_pagination_response(resp, client)
     end
   end
 
   @spec build_pagination_response(
           HTTPoison.Response.t() | {integer, any, HTTPoison.Response.t()},
-          Client.auth()
+          Client.t()
         ) :: pagination_response
-  defp build_pagination_response(%HTTPoison.Response{:headers => headers} = resp, auth) do
-    {process_response(resp), next_link(headers), auth}
+  defp build_pagination_response(%HTTPoison.Response{:headers => headers} = resp, client) do
+    {process_response(resp), next_link(headers), client}
   end
 
-  defp build_pagination_response({_, _, %HTTPoison.Response{} = resp}, auth) do
-    build_pagination_response(resp, auth)
+  defp build_pagination_response({_, _, %HTTPoison.Response{} = resp}, client) do
+    build_pagination_response(resp, client)
   end
 
   defp location_header({_, _, resp}),
